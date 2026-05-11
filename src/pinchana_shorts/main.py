@@ -375,12 +375,11 @@ async def health_check():
         vpn_status = status.get("status", "").lower()
         if vpn_status != "running":
             raise HTTPException(status_code=503, detail=f"VPN not running: {vpn_status}")
-        cookie_dir = os.getenv("YTDLP_COOKIES_DIR", "/run/pinchana-cookies")
         return {
             "status": "healthy",
             "service": "shorts",
             "vpn": status,
-            "cookies_dir": cookie_dir,
+            "cookies_available": _resolve_cookie_source() is not None,
         }
     except HTTPException:
         raise
