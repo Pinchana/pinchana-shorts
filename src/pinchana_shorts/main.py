@@ -27,17 +27,22 @@ storage = MediaStorage(
     max_size_gb=float(os.getenv("CACHE_MAX_SIZE_GB", "10.0")),
 )
 
-# Prioritize 1080p H.264/AAC up to 1080p. No size/bitrate caps — quality first.
-SHORTS_FORMAT = (
-    "(bv*[vcodec~='^(avc|h264)'][height<=1080][ext=mp4]"
-    "+ba[acodec~='^(mp4a|aac)'][ext=m4a])/"
-    "(b[ext=mp4][vcodec~='^(avc|h264)'][acodec~='^(mp4a|aac)'][height<=1080])/"
-    "(bv*[vcodec~='^(avc|h264)'][height<=1080][ext=mp4]+ba[ext=m4a])/"
-    "(bv*[height<=1080]+ba/b[height<=1080])"
-)
-# Prefer highest resolution, then H.264, then AAC, then largest size/bitrate
-# Default sort order is descending (larger/higher first); + prefix inverts to ascending.
-SHORTS_FORMAT_SORT = ["res:1080", "vcodec:h264", "acodec:aac", "size", "br"]
+# Use yt-dlp's native best-quality selection with codec/res preferences.
+# Mirrors the `-t mp4` preset: H.264 video + AAC audio, up to 1080p, MP4 container.
+# `res` is the *smaller* dimension, so res:1080 correctly matches both
+# landscape 1920x1080 and portrait 1080x1920 (Shorts).
+SHORTS_FORMAT = "bv*+ba/b"
+SHORTS_FORMAT_SORT = [
+    "vcodec:h264",
+    "acodec:aac",
+    "res:1080",
+    "lang",
+    "quality",
+    "fps",
+    "hdr:12",
+    "size",
+    "br",
+]
 
 
 def _safe_float(value: str | None, default: float) -> float:
