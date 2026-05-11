@@ -7,7 +7,6 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 import uuid
 from pathlib import Path
 
@@ -28,14 +27,16 @@ storage = MediaStorage(
     max_size_gb=float(os.getenv("CACHE_MAX_SIZE_GB", "10.0")),
 )
 
+# Prioritize 1080p H.264/AAC up to 1080p. No size/bitrate caps — quality first.
 SHORTS_FORMAT = (
-    "(bv*[vcodec~='^(avc|h264)'][height<=1080][tbr<=?2600][ext=mp4]"
-    "+ba[acodec~='^(mp4a|aac)'][abr<=?128][ext=m4a])/"
+    "(bv*[vcodec~='^(avc|h264)'][height<=1080][ext=mp4]"
+    "+ba[acodec~='^(mp4a|aac)'][ext=m4a])/"
     "(b[ext=mp4][vcodec~='^(avc|h264)'][acodec~='^(mp4a|aac)'][height<=1080])/"
     "(bv*[vcodec~='^(avc|h264)'][height<=1080][ext=mp4]+ba[ext=m4a])/"
     "(bv*[height<=1080]+ba/b[height<=1080])"
 )
-SHORTS_FORMAT_SORT = ["res:1080", "vcodec:h264", "acodec:aac", "+size", "+br"]
+# Prefer highest resolution, then H.264, then AAC, then largest size (highest bitrate)
+SHORTS_FORMAT_SORT = ["res:1080", "vcodec:h264", "acodec:aac", "-size", "-br"]
 
 
 def _safe_float(value: str | None, default: float) -> float:
@@ -141,70 +142,7 @@ def _find_downloaded_file(base_dir: Path, prefix: str) -> Path | None:
 
 
 def _optimize_if_needed(video_path: Path, duration_seconds: float | int | None) -> Path:
-    max_mb_per_min = _safe_float(os.getenv("SHORTS_MAX_MB_PER_MINUTE"), 18.0)
-    if max_mb_per_min <= 0:
-        return video_path
-
-    duration_seconds = _safe_float(str(duration_seconds), 0.0)
-    if duration_seconds <= 0:
-        return video_path
-
-    size_mb = video_path.stat().st_size / (1024 * 1024)
-    mb_per_min = size_mb / max(duration_seconds / 60.0, 0.01)
-    if mb_per_min <= max_mb_per_min:
-        return video_path
-
-    optimized = video_path.with_name("video.optimized.mp4")
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loglevel",
-        "error",
-        "-i",
-        str(video_path),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a:0?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        os.getenv("SHORTS_X264_PRESET", "veryfast"),
-        "-crf",
-        os.getenv("SHORTS_X264_CRF", "24"),
-        "-maxrate",
-        os.getenv("SHORTS_MAXRATE", "2500k"),
-        "-bufsize",
-        os.getenv("SHORTS_BUFSIZE", "5000k"),
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        os.getenv("SHORTS_AUDIO_BITRATE", "128k"),
-        "-movflags",
-        "+faststart",
-        str(optimized),
-    ]
-
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except FileNotFoundError:
-        logger.warning("ffmpeg not available, skipping optimization")
-        return video_path
-    except subprocess.CalledProcessError as e:
-        logger.warning("Video optimization failed: %s", e.stderr.strip() or e)
-        if optimized.exists():
-            optimized.unlink(missing_ok=True)
-        return video_path
-
-    if optimized.exists() and optimized.stat().st_size < video_path.stat().st_size:
-        video_path.unlink(missing_ok=True)
-        optimized.replace(video_path)
-        logger.info("Optimized Shorts video size for %s", video_path.parent.name)
-    else:
-        optimized.unlink(missing_ok=True)
-
+    """No-op: we prioritize quality over file size. Keep original H.264/AAC stream."""
     return video_path
 
 
