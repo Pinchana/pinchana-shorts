@@ -31,7 +31,13 @@ storage = MediaStorage(
 # Mirrors the `-t mp4` preset: H.264 video + AAC audio, up to 1080p, MP4 container.
 # `res` is the *smaller* dimension, so res:1080 correctly matches both
 # landscape 1920x1080 and portrait 1080x1920 (Shorts).
-SHORTS_FORMAT = "bv*+ba/b"
+# Force separate video-only + audio-only streams so yt-dlp downloads the
+# highest-quality H.264/AAC DASH tracks and merges them. Fallback to best
+# combined format only when separate streams are unavailable.
+SHORTS_FORMAT = "bv+ba/b"
+
+# Mirror yt-dlp's `-t mp4` preset sort order.
+# `res:1080` caps at 1080p (YouTube doesn't serve H.264 above 1080p).
 SHORTS_FORMAT_SORT = [
     "vcodec:h264",
     "acodec:aac",
@@ -166,7 +172,9 @@ def _download_short(url: str, post_dir: Path, cookiefile: Path | None) -> tuple[
         "writethumbnail": True,
         "format": SHORTS_FORMAT,
         "format_sort": SHORTS_FORMAT_SORT,
+        "format_sort_force": True,
         "merge_output_format": "mp4",
+        "remux_video": "mp4",
         "retries": 2,
         "fragment_retries": 2,
         "concurrent_fragment_downloads": 1,
