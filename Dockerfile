@@ -1,0 +1,29 @@
+FROM python:3.13-slim
+
+WORKDIR /workspace/pinchana-shorts
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy pinchana-core (local path dependency) first
+COPY pinchana-core/pyproject.toml pinchana-core/uv.lock pinchana-core/README.md ../pinchana-core/
+RUN mkdir -p ../pinchana-core/src
+COPY pinchana-core/src ../pinchana-core/src
+
+# Copy scraper package files
+COPY pinchana-shorts/pyproject.toml pinchana-shorts/uv.lock pinchana-shorts/README.md ./
+RUN uv sync --frozen --no-install-project
+
+COPY pinchana-shorts/src ./src
+
+RUN mkdir -p /app/cache /run/pinchana-cookies
+ENV CACHE_PATH=/app/cache
+ENV CACHE_MAX_SIZE_GB=10.0
+ENV YTDLP_COOKIES_DIR=/run/pinchana-cookies
+ENV SHORTS_MAX_MB_PER_MINUTE=18.0
+
+EXPOSE 8083
+CMD ["uv", "run", "uvicorn", "pinchana_shorts.main:app", "--host", "0.0.0.0", "--port", "8083"]
