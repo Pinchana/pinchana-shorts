@@ -35,8 +35,9 @@ SHORTS_FORMAT = (
     "(bv*[vcodec~='^(avc|h264)'][height<=1080][ext=mp4]+ba[ext=m4a])/"
     "(bv*[height<=1080]+ba/b[height<=1080])"
 )
-# Prefer highest resolution, then H.264, then AAC, then largest size (highest bitrate)
-SHORTS_FORMAT_SORT = ["res:1080", "vcodec:h264", "acodec:aac", "-size", "-br"]
+# Prefer highest resolution, then H.264, then AAC, then largest size/bitrate
+# Default sort order is descending (larger/higher first); + prefix inverts to ascending.
+SHORTS_FORMAT_SORT = ["res:1080", "vcodec:h264", "acodec:aac", "size", "br"]
 
 
 def _safe_float(value: str | None, default: float) -> float:
