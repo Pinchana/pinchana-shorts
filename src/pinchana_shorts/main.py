@@ -220,6 +220,15 @@ def _is_rate_limited(e: Exception) -> bool:
             "bot",
             "sign in to confirm",
             "unavailable",
+            # Network/transport errors that an IP rotation can clear:
+            "timeout",
+            "timed out",
+            "connection",
+            "connection reset",
+            "connection refused",
+            "temporary failure",
+            "http error 5",  # generic 5xx from yt-dlp wrapper
+            "server returned",
         )
     )
 
