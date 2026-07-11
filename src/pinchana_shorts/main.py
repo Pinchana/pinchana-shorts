@@ -26,6 +26,8 @@ storage = MediaStorage(
     base_path=os.getenv("CACHE_PATH", "./cache"),
     max_size_gb=float(os.getenv("CACHE_MAX_SIZE_GB", "10.0")),
 )
+YTDLP_LIMIT = asyncio.Semaphore(max(1, int(os.getenv("YTDLP_CONCURRENCY", "2"))))
+
 
 # Use yt-dlp's native best-quality selection with codec/res preferences.
 # Mirrors the `-t mp4` preset: H.264 video + AAC audio, up to 1080p, MP4 container.
@@ -249,7 +251,10 @@ async def _scrape_once(url: str, short_id_hint: str | None) -> ScrapeResponse:
         storage.prepare_post_dir(short_id)
         post_dir = storage._post_dir(short_id)
 
-        info, video_file, thumb_file = await asyncio.to_thread(_download_short, url, post_dir, runtime_cookie)
+        async with YTDLP_LIMIT:
+            info, video_file, thumb_file = await asyncio.to_thread(
+                _download_short, url, post_dir, runtime_cookie
+            )
 
         real_short_id = info.get("id") or short_id
         if real_short_id != short_id:
@@ -286,8 +291,7 @@ async def _scrape_once(url: str, short_id_hint: str | None) -> ScrapeResponse:
         _cleanup_temp_cookiefile(runtime_cookie)
 
 
-@router.post("/scrape", response_model=ScrapeResponse)
-async def process_scrape_request(request: ScrapeRequest):
+async def _process_scrape_request(request: ScrapeRequest):
     url = str(request.url)
     if "youtube.com/shorts/" not in url and "youtu.be/" not in url:
         raise HTTPException(status_code=400, detail="Only YouTube Shorts URLs are supported")
@@ -329,12 +333,19 @@ async def process_scrape_request(request: ScrapeRequest):
     )
 
 
+@router.post("/scrape", response_model=ScrapeResponse)
+async def process_scrape_request(request: ScrapeRequest):
+    url = str(request.url)
+    key = _extract_short_id(url) or url
+    return await storage.singleflight(key, lambda: _process_scrape_request(request))
+
+
 @router.get("/health")
 async def health_check():
     try:
         status = await gluetun.get_vpn_status()
         vpn_status = status.get("status", "").lower()
-        if vpn_status != "running":
+        if gluetun.enabled and vpn_status != "running":
             raise HTTPException(status_code=503, detail=f"VPN not running: {vpn_status}")
         return {
             "status": "healthy",
@@ -362,3 +373,8 @@ registry.register(
 
 app = FastAPI(title="Pinchana Shorts", version="0.1.0")
 app.include_router(router)
+
+
+@app.on_event("shutdown")
+async def close_storage_client():
+    await storage.close()
