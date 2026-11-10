@@ -340,6 +340,28 @@ async def process_scrape_request(request: ScrapeRequest):
     return await storage.singleflight(key, lambda: _process_scrape_request(request))
 
 
+@router.post("/playlist-item", response_model=ScrapeResponse)
+async def process_playlist_item(request: ScrapeRequest):
+    """Internal web-playlist operation; ordinary /scrape remains Shorts-only."""
+    from urllib.parse import parse_qs, urlsplit
+
+    parsed = urlsplit(str(request.url))
+    identifier = parse_qs(parsed.query).get("v", [""])[0]
+    if parsed.hostname == "youtu.be":
+        identifier = parsed.path.strip("/")
+    elif parsed.path.startswith("/shorts/"):
+        identifier = parsed.path.split("/")[2]
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
+        or parsed.username or parsed.password or parsed.port not in (None, 443)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{11}", identifier)
+    ):
+        raise HTTPException(400, "Invalid YouTube playlist item URL")
+    canonical = f"https://www.youtube.com/watch?v={identifier}"
+    return await storage.singleflight(identifier, lambda: _scrape_once(canonical, identifier))
+
+
 @router.get("/health")
 async def health_check():
     try:
